@@ -21,7 +21,7 @@ async def traiter_message(update_data):
     if update.message and update.message.text:
         message_utilisateur = update.message.text
         reponse = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             contents=message_utilisateur
         )
         await bot.send_message(
