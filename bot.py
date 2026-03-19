@@ -5,8 +5,8 @@ from flask import Flask, request
 from telegram import Update, Bot
 import asyncio
 
-TOKEN = os.environ["8668060758:AAHBqjKjuKetDKcEvkxa32UYeC_VKNCdFLATELEGRAM_BOT_TOKEN"]
-WEBHOOK_URL = os.environ["https://mon-bot-telegram-yh8q.onrender.com/set_webhook"]
+TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
+WEBHOOK_URL = os.environ["WEBHOOK_URL"]
 
 app_flask = Flask(__name__)
 bot = Bot(token=TOKEN)
