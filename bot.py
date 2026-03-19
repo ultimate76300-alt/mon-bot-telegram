@@ -88,9 +88,15 @@ async def traiter_message(update_data):
             # Charge l'historique depuis Supabase
             historique = charger_historique(chat_id)
 
+            # Si historique vide, on envoie juste le message direct
+            if not historique:
+                contents = message_utilisateur
+            else:
+                contents = historique
+
             reponse = client.models.generate_content(
                 model="gemini-2.5-flash",
-                contents=historique,
+                contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT
                 )
@@ -124,4 +130,4 @@ def set_webhook():
 
 
 if __name__ == "__main__":
-    app_flask.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app_flask.run(host="0.0.0.0",
