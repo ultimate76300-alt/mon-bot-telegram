@@ -2,12 +2,12 @@ from dotenv import load_dotenv
 load_dotenv()
 import os
 import asyncio
-from flask import Flask, request, jsonify
+from flask import Flask, request
 from telegram import Update, Bot
 from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes, filters
 
-TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-WEBHOOK_URL = os.environ["WEBHOOK_URL"]
+TOKEN = os.environ["8668060758:AAHBqjKjuKetDKcEvkxa32UYeC_VKNCdFLA"]
+WEBHOOK_URL = os.environ["https://mon-bot-telegram-yh8q.onrender.com/set_webhook"]
 
 app_flask = Flask(__name__)
 bot_app = ApplicationBuilder().token(TOKEN).build()
@@ -16,6 +16,11 @@ async def repondre(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Tu as dit : {update.message.text}")
 
 bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, repondre))
+
+async def init_bot():
+    await bot_app.initialize()
+
+asyncio.run(init_bot())
 
 @app_flask.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
