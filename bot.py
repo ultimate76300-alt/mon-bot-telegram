@@ -1,9 +1,10 @@
 from dotenv import load_dotenv
 load_dotenv()
 import os
+import asyncio
+import threading
 from flask import Flask, request
 from telegram import Update, Bot
-import asyncio
 
 TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 WEBHOOK_URL = os.environ["WEBHOOK_URL"]
@@ -22,8 +23,9 @@ async def traiter_message(update_data):
 @app_flask.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     data = request.get_json(force=True)
-    asyncio.run(traiter_message(data))
-    return "OK"
+    thread = threading.Thread(target=lambda: asyncio.run(traiter_message(data)))
+    thread.start()
+    return "OK", 200
 
 @app_flask.route("/set_webhook")
 def set_webhook():
