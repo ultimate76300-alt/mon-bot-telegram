@@ -5,18 +5,21 @@ from flask import Flask, request
 from telegram import Update, Bot
 from google import genai
 from google.genai import types
+from supabase import create_client
 import asyncio
 
 
 TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 WEBHOOK_URL = os.environ["WEBHOOK_URL"]
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
+SUPABASE_URL = os.environ["SUPABASE_URL"]
+SUPABASE_KEY = os.environ["SUPABASE_KEY"]
+
 
 client = genai.Client(api_key=GEMINI_API_KEY)
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 app_flask = Flask(__name__)
 
-# Historique par utilisateur
-historiques = {}
 
 SYSTEM_PROMPT = """
 Tu t'appelles Lauriane, tu as 24 ans, tu fais 1m40, tu as les yeux marrons, tu es mignonne et tu le sais.
@@ -38,6 +41,39 @@ Stratégie de conversion :
 - Tu restes toujours dans le personnage, jamais tu ne révèles que tu es une IA
 """
 
+
+def charger_historique(chat_id):
+    try:
+        data = supabase.table("historiques")\
+            .select("role, message")\
+            .eq("chat_id", chat_id)\
+            .order("created_at")\
+            .limit(20)\
+            .execute()
+        print(f"📖 Historique chargé : {len(data.data)} messages pour {chat_id}")
+        historique = []
+        for row in data.data:
+            historique.append(
+                types.Content(role=row["role"], parts=[types.Part(text=row["message"])])
+            )
+        return historique
+    except Exception as e:
+        print(f"❌ Erreur chargement historique : {e}")
+        return []
+
+
+def sauvegarder_message(chat_id, role, message):
+    try:
+        supabase.table("historiques").insert({
+            "chat_id": chat_id,
+            "role": role,
+            "message": message
+        }).execute()
+        print(f"✅ Sauvegardé : {role} - {message[:30]}")
+    except Exception as e:
+        print(f"❌ Erreur Supabase : {e}")
+
+
 async def traiter_message(update_data):
     bot = Bot(token=TOKEN)
     async with bot:
@@ -46,32 +82,24 @@ async def traiter_message(update_data):
             chat_id = update.message.chat_id
             message_utilisateur = update.message.text
 
-            # Récupère ou crée l'historique de cet utilisateur
-            if chat_id not in historiques:
-                historiques[chat_id] = []
+            # Sauvegarde le message utilisateur
+            sauvegarder_message(chat_id, "user", message_utilisateur)
 
-            # Ajoute le message de l'utilisateur à l'historique
-            historiques[chat_id].append(
-                types.Content(role="user", parts=[types.Part(text=message_utilisateur)])
-            )
-
-            # Garde seulement les 20 derniers messages
-            historiques[chat_id] = historiques[chat_id][-20:]
+            # Charge l'historique depuis Supabase
+            historique = charger_historique(chat_id)
 
             reponse = client.models.generate_content(
                 model="gemini-2.5-flash",
-                contents=historiques[chat_id],
+                contents=historique,
                 config=types.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT
                 )
             )
 
-            # Ajoute la réponse du bot à l'historique
-            historiques[chat_id].append(
-                types.Content(role="model", parts=[types.Part(text=reponse.text)])
-            )
+            # Sauvegarde la réponse du bot
+            sauvegarder_message(chat_id, "model", reponse.text)
 
-            # Simule l'écriture (adapté à la longueur, min 6s, max 30s)
+            # Simule l'écriture
             temps = min(max((len(reponse.text) / 50) * 3, 6), 30)
             await bot.send_chat_action(chat_id=chat_id, action="typing")
             await asyncio.sleep(temps)
