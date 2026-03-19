@@ -57,8 +57,8 @@ async def traiter_message(update_data):
                 )
             )
 
-            # Simule l'écriture (adapté à la longueur, min 2s, max 10s)
-            temps = min(max(len(reponse.text) / 50, 2), 10)
+            # Simule l'écriture (adapté à la longueur, min 6s, max 17s)
+            temps = min(max((len(reponse.text) / 50) * 3, 6), 30)
             await bot.send_chat_action(chat_id=update.message.chat_id, action="typing")
             await asyncio.sleep(temps)
 
