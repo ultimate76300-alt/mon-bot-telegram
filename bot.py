@@ -1,37 +1,32 @@
 from dotenv import load_dotenv
 load_dotenv()
 import os
-import asyncio
 from flask import Flask, request
 from telegram import Update, Bot
-from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes, filters
+import asyncio
 
-TOKEN = os.environ["8668060758:AAHBqjKjuKetDKcEvkxa32UYeC_VKNCdFLA"]
+TOKEN = os.environ["8668060758:AAHBqjKjuKetDKcEvkxa32UYeC_VKNCdFLATELEGRAM_BOT_TOKEN"]
 WEBHOOK_URL = os.environ["https://mon-bot-telegram-yh8q.onrender.com/set_webhook"]
 
 app_flask = Flask(__name__)
-bot_app = ApplicationBuilder().token(TOKEN).build()
+bot = Bot(token=TOKEN)
 
-async def repondre(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"Tu as dit : {update.message.text}")
-
-bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, repondre))
-
-async def init_bot():
-    await bot_app.initialize()
-
-asyncio.run(init_bot())
+async def traiter_message(update_data):
+    update = Update.de_json(update_data, bot)
+    if update.message and update.message.text:
+        await bot.send_message(
+            chat_id=update.message.chat_id,
+            text=f"Tu as dit : {update.message.text}"
+        )
 
 @app_flask.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     data = request.get_json(force=True)
-    update = Update.de_json(data, bot_app.bot)
-    asyncio.run(bot_app.process_update(update))
+    asyncio.run(traiter_message(data))
     return "OK"
 
 @app_flask.route("/set_webhook")
 def set_webhook():
-    bot = Bot(token=TOKEN)
     asyncio.run(bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}"))
     return "Webhook configuré !"
 
