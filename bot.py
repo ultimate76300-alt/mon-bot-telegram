@@ -5,14 +5,13 @@ import asyncio
 import threading
 from flask import Flask, request
 from telegram import Update, Bot
-import google.generativeai as genai
+from google import genai
 
 TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 WEBHOOK_URL = os.environ["WEBHOOK_URL"]
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 app_flask = Flask(__name__)
 bot = Bot(token=TOKEN)
@@ -21,7 +20,10 @@ async def traiter_message(update_data):
     update = Update.de_json(update_data, bot)
     if update.message and update.message.text:
         message_utilisateur = update.message.text
-        reponse = model.generate_content(message_utilisateur)
+        reponse = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=message_utilisateur
+        )
         await bot.send_message(
             chat_id=update.message.chat_id,
             text=reponse.text
