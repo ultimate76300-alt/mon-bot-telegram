@@ -93,9 +93,9 @@ async def traiter_message(update_data):
                 )
             )
 
-            # Vérifie que la réponse est valide
             if not reponse.text:
-                print("⚠️ Réponse Gemini vide, message ignoré")
+                print("⚠️ Réponse Gemini vide, fallback")
+                await bot.send_message(chat_id=chat_id, text="heyy 🥰 t'es qui toi ?")
                 return
 
             sauvegarder_message(chat_id, "model", reponse.text)
