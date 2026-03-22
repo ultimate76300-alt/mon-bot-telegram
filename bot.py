@@ -94,7 +94,7 @@ async def traiter_message(update_data):
             )
 
             if not reponse.text:
-                print("⚠️ Réponse Gemini vide, fallback")
+                print(f"⚠️ Réponse Gemini vide - finish_reason: {reponse.candidates[0].finish_reason if reponse.candidates else 'no candidates'}")
                 await bot.send_message(chat_id=chat_id, text="heyy 🥰 t'es qui toi ?")
                 return
 
