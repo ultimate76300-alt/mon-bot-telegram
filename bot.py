@@ -111,6 +111,9 @@ async def handler(event):
 
     contents = historique if historique else message_utilisateur
 
+    # Délai de 5 secondes avant que le typing démarre (effet naturel)
+    await asyncio.sleep(5)
+
     # Phase 1 : typing pendant que Gemini génère la réponse
     typing_task = asyncio.create_task(typing_loop(event.chat_id))
 
