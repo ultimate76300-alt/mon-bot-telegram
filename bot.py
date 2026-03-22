@@ -1,23 +1,21 @@
 from dotenv import load_dotenv
 load_dotenv()
 import os
-import threading
-from flask import Flask, request
-from telegram import Update, Bot
+from telethon import TelegramClient, events
 from google import genai
 from google.genai import types
 from supabase import create_client
-import asyncio
 
-TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-WEBHOOK_URL = os.environ["WEBHOOK_URL"]
+API_ID = 23496684
+API_HASH = "04a6608e42cd0a44b6c0fa4db3ab4c9c"
+PHONE = "+33623019958"
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+client_gemini = genai.Client(api_key=GEMINI_API_KEY)
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-app_flask = Flask(__name__)
+client = TelegramClient("lauriane_session", API_ID, API_HASH)
 
 SYSTEM_PROMPT = """
 Tu t'appelles Lauriane, 24 ans. Tu es créatrice de contenu sur OnlyFans.
@@ -50,7 +48,6 @@ def charger_historique(chat_id):
             .order("created_at")\
             .limit(10)\
             .execute()
-        print(f"📖 Historique chargé : {len(data.data)} messages pour {chat_id}")
         historique = []
         for row in data.data:
             historique.append(
@@ -68,60 +65,49 @@ def sauvegarder_message(chat_id, role, message):
             "role": role,
             "message": message
         }).execute()
-        print(f"✅ Sauvegardé : {role} - {message[:30]}")
     except Exception as e:
         print(f"❌ Erreur Supabase : {e}")
 
-async def traiter_message(update_data):
-    bot = Bot(token=TOKEN)
-    async with bot:
-        update = Update.de_json(update_data, bot)
-        if update.message and update.message.text:
-            chat_id = update.message.chat_id
-            message_utilisateur = update.message.text
+@client.on(events.NewMessage(incoming=True))
+async def handler(event):
+    if event.is_private:
+        chat_id = str(event.chat_id)
+        message_utilisateur = event.message.text
+        print(f"📩 Message reçu de {chat_id} : {message_utilisateur}")
 
-            sauvegarder_message(chat_id, "user", message_utilisateur)
-            historique = charger_historique(chat_id)
+        sauvegarder_message(chat_id, "user", message_utilisateur)
+        historique = charger_historique(chat_id)
 
-            if not historique:
-                contents = message_utilisateur
-            else:
-                contents = historique
+        if not historique:
+            contents = message_utilisateur
+        else:
+            contents = historique
 
-            reponse = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_PROMPT
-                )
+        reponse = client_gemini.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=contents,
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT
             )
+        )
 
-            if not reponse.text:
-                print(f"⚠️ Réponse Gemini vide - finish_reason: {reponse.candidates[0].finish_reason if reponse.candidates else 'no candidates'}")
-                await bot.send_message(chat_id=chat_id, text="heyy 🥰 t'es qui toi ?")
-                return
+        if not reponse.text:
+            print("⚠️ Réponse Gemini vide")
+            return
 
-            sauvegarder_message(chat_id, "model", reponse.text)
+        sauvegarder_message(chat_id, "model", reponse.text)
 
-            temps = min(max((len(reponse.text) / 50) * 9, 18), 90)
-            await bot.send_chat_action(chat_id=chat_id, action="typing")
+        import asyncio
+        temps = min(max((len(reponse.text) / 50) * 9, 18), 90)
+        async with client.action(event.chat_id, "typing"):
             await asyncio.sleep(temps)
-            await bot.send_message(chat_id=chat_id, text=reponse.text)
+        await event.respond(reponse.text)
+        print(f"✅ Réponse envoyée : {reponse.text[:50]}")
 
-@app_flask.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    data = request.get_json(force=True)
-    thread = threading.Thread(target=lambda: asyncio.run(traiter_message(data)))
-    thread.start()
-    return "OK", 200
+async def main():
+    await client.start(phone=PHONE)
+    print("✅ Bot Telethon lancé !")
+    await client.run_until_disconnected()
 
-@app_flask.route("/set_webhook")
-def set_webhook():
-    async def _set():
-        async with Bot(token=TOKEN) as bot:
-            await bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
-    asyncio.run(_set())
-    return "Webhook configuré !"
-
-if __name__ == "__main__":
-    app_flask.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+import asyncio
+asyncio.run(main())
