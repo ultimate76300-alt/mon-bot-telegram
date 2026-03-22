@@ -99,8 +99,7 @@ async def handler(event):
 
         import asyncio
         temps = min(max((len(reponse.text) / 50) * 9, 18), 90)
-        async with client.action(event.chat_id, "typing"):
-            await asyncio.sleep(temps)
+        await asyncio.sleep(temps)
         await event.respond(reponse.text)
         print(f"✅ Réponse envoyée : {reponse.text[:50]}")
 
