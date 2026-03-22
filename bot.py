@@ -3,7 +3,7 @@ load_dotenv()
 import os
 import asyncio
 
-from telethon import TelegramClient, events, functions, types as tg_types
+from telethon import TelegramClient, events
 from google import genai
 from google.genai import types
 from supabase import create_client
@@ -92,7 +92,7 @@ async def handler(event):
         return
 
     chat_id = str(event.chat_id)
-    message_utilisateur = event.message.text
+    message_utilisateur = event.message.text or ""
     print(f"📩 Message reçu de {chat_id} : {message_utilisateur}")
 
     sauvegarder_message(chat_id, "user", message_utilisateur)
@@ -103,14 +103,12 @@ async def handler(event):
     else:
         contents = historique
 
+    # Typing pendant que Gemini réfléchit
     async def typing_loop():
         try:
             while True:
-                await client(functions.messages.SetTypingRequest(
-                    peer=event.chat_id,
-                    action=tg_types.SendMessageTypingAction()
-                ))
-                await asyncio.sleep(4)
+                async with client.action(event.chat_id, "typing"):
+                    await asyncio.sleep(4)
         except asyncio.CancelledError:
             pass
 
@@ -133,6 +131,7 @@ async def handler(event):
 
     sauvegarder_message(chat_id, "model", reponse.text)
 
+    # Délai humain avant d'envoyer
     temps = min(max((len(reponse.text) / 50) * 9, 18), 90)
     await asyncio.sleep(temps)
 
