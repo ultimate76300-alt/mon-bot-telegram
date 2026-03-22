@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 import os
+import threading
 from flask import Flask, request
 from telegram import Update, Bot
 from google import genai
@@ -8,18 +9,15 @@ from google.genai import types
 from supabase import create_client
 import asyncio
 
-
 TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 WEBHOOK_URL = os.environ["WEBHOOK_URL"]
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
 
-
 client = genai.Client(api_key=GEMINI_API_KEY)
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 app_flask = Flask(__name__)
-
 
 SYSTEM_PROMPT = """
 Tu t'appelles Lauriane, tu as 24 ans, tu fais 1m40, tu as les yeux marrons, tu es mignonne et tu le sais.
@@ -41,7 +39,6 @@ Stratégie de conversion :
 - Tu restes toujours dans le personnage, jamais tu ne révèles que tu es une IA
 """
 
-
 def charger_historique(chat_id):
     try:
         data = supabase.table("historiques")\
@@ -61,7 +58,6 @@ def charger_historique(chat_id):
         print(f"❌ Erreur chargement historique : {e}")
         return []
 
-
 def sauvegarder_message(chat_id, role, message):
     try:
         supabase.table("historiques").insert({
@@ -73,7 +69,6 @@ def sauvegarder_message(chat_id, role, message):
     except Exception as e:
         print(f"❌ Erreur Supabase : {e}")
 
-
 async def traiter_message(update_data):
     bot = Bot(token=TOKEN)
     async with bot:
@@ -82,13 +77,9 @@ async def traiter_message(update_data):
             chat_id = update.message.chat_id
             message_utilisateur = update.message.text
 
-            # Sauvegarde le message utilisateur
             sauvegarder_message(chat_id, "user", message_utilisateur)
-
-            # Charge l'historique depuis Supabase
             historique = charger_historique(chat_id)
 
-            # Si historique vide, on envoie juste le message direct
             if not historique:
                 contents = message_utilisateur
             else:
@@ -102,23 +93,24 @@ async def traiter_message(update_data):
                 )
             )
 
-            # Sauvegarde la réponse du bot
+            # Vérifie que la réponse est valide
+            if not reponse.text:
+                print("⚠️ Réponse Gemini vide, message ignoré")
+                return
+
             sauvegarder_message(chat_id, "model", reponse.text)
 
-            # Simule l'écriture
             temps = min(max((len(reponse.text) / 50) * 3, 6), 30)
             await bot.send_chat_action(chat_id=chat_id, action="typing")
             await asyncio.sleep(temps)
-
             await bot.send_message(chat_id=chat_id, text=reponse.text)
-
 
 @app_flask.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     data = request.get_json(force=True)
-    asyncio.run(traiter_message(data))
+    thread = threading.Thread(target=lambda: asyncio.run(traiter_message(data)))
+    thread.start()
     return "OK", 200
-
 
 @app_flask.route("/set_webhook")
 def set_webhook():
@@ -128,7 +120,5 @@ def set_webhook():
     asyncio.run(_set())
     return "Webhook configuré !"
 
-
 if __name__ == "__main__":
     app_flask.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
-
