@@ -103,7 +103,7 @@ async def traiter_message(update_data):
 
             sauvegarder_message(chat_id, "model", reponse.text)
 
-            temps = min(max((len(reponse.text) / 50) * 3, 6), 30)
+            temps = min(max((len(reponse.text) / 50) * 9, 18), 90)
             await bot.send_chat_action(chat_id=chat_id, action="typing")
             await asyncio.sleep(temps)
             await bot.send_message(chat_id=chat_id, text=reponse.text)
