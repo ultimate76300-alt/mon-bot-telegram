@@ -1,7 +1,9 @@
 from dotenv import load_dotenv
 load_dotenv()
 import os
-from telethon import TelegramClient, events
+import asyncio
+
+from telethon import TelegramClient, events, functions, types as tg_types
 from google import genai
 from google.genai import types
 from supabase import create_client
@@ -9,6 +11,7 @@ from supabase import create_client
 API_ID = 23496684
 API_HASH = "04a6608e42cd0a44b6c0fa4db3ab4c9c"
 PHONE = "+33623019958"
+
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
@@ -85,19 +88,35 @@ def sauvegarder_message(chat_id, role, message):
 
 @client.on(events.NewMessage(incoming=True))
 async def handler(event):
-    if event.is_private:
-        chat_id = str(event.chat_id)
-        message_utilisateur = event.message.text
-        print(f"📩 Message reçu de {chat_id} : {message_utilisateur}")
+    if not event.is_private:
+        return
 
-        sauvegarder_message(chat_id, "user", message_utilisateur)
-        historique = charger_historique(chat_id)
+    chat_id = str(event.chat_id)
+    message_utilisateur = event.message.text
+    print(f"📩 Message reçu de {chat_id} : {message_utilisateur}")
 
-        if not historique:
-            contents = message_utilisateur
-        else:
-            contents = historique
+    sauvegarder_message(chat_id, "user", message_utilisateur)
+    historique = charger_historique(chat_id)
 
+    if not historique:
+        contents = message_utilisateur
+    else:
+        contents = historique
+
+    async def typing_loop():
+        try:
+            while True:
+                await client(functions.messages.SetTypingRequest(
+                    peer=event.chat_id,
+                    action=tg_types.SendMessageTypingAction()
+                ))
+                await asyncio.sleep(4)
+        except asyncio.CancelledError:
+            pass
+
+    typing_task = asyncio.create_task(typing_loop())
+
+    try:
         reponse = client_gemini.models.generate_content(
             model="gemini-2.5-flash",
             contents=contents,
@@ -105,23 +124,24 @@ async def handler(event):
                 system_instruction=SYSTEM_PROMPT
             )
         )
+    finally:
+        typing_task.cancel()
 
-        if not reponse.text:
-            print("⚠️ Réponse Gemini vide")
-            return
+    if not reponse.text:
+        print("⚠️ Réponse Gemini vide")
+        return
 
-        sauvegarder_message(chat_id, "model", reponse.text)
+    sauvegarder_message(chat_id, "model", reponse.text)
 
-        import asyncio
-        temps = min(max((len(reponse.text) / 50) * 9, 18), 90)
-        await asyncio.sleep(temps)
-        await event.respond(reponse.text)
-        print(f"✅ Réponse envoyée : {reponse.text[:50]}")
+    temps = min(max((len(reponse.text) / 50) * 9, 18), 90)
+    await asyncio.sleep(temps)
+
+    await event.respond(reponse.text)
+    print(f"✅ Réponse envoyée : {reponse.text[:50]}")
 
 async def main():
     await client.start(phone=PHONE)
     print("✅ Bot Telethon lancé !")
     await client.run_until_disconnected()
 
-import asyncio
 asyncio.run(main())
