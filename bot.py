@@ -2,23 +2,22 @@ from dotenv import load_dotenv
 load_dotenv()
 import os
 import asyncio
+import json
 
 from telethon import TelegramClient, events, functions, types as tg_types
 from google import genai
 from google.genai import types
-from supabase import create_client
 
 API_ID = 23496684
 API_HASH = "04a6608e42cd0a44b6c0fa4db3ab4c9c"
 PHONE = "+33623019958"
 
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_KEY = os.environ["SUPABASE_KEY"]
 
 client_gemini = genai.Client(api_key=GEMINI_API_KEY)
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 client = TelegramClient("lauriane_session", API_ID, API_HASH)
+
+MEMOIRE_FILE = "memoire.json"
 
 SYSTEM_PROMPT = """
 Tu t'appelles Lauriane, 24 ans. Tu es créatrice de contenu sur OnlyFans.
@@ -58,33 +57,35 @@ Règles :
 - Tu restes polie, même si le mec est bizarre tu gardes ton calme ou tu l'ignores
 """
 
+def lire_memoire():
+    if not os.path.exists(MEMOIRE_FILE):
+        return {}
+    with open(MEMOIRE_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def ecrire_memoire(data):
+    with open(MEMOIRE_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
 def charger_historique(chat_id):
-    try:
-        data = supabase.table("historiques")\
-            .select("role, message")\
-            .eq("chat_id", chat_id)\
-            .order("created_at")\
-            .limit(10)\
-            .execute()
-        historique = []
-        for row in data.data:
-            historique.append(
-                types.Content(role=row["role"], parts=[types.Part(text=row["message"])])
-            )
-        return historique
-    except Exception as e:
-        print(f"❌ Erreur chargement historique : {e}")
-        return []
+    data = lire_memoire()
+    messages = data.get(chat_id, [])
+    historique = []
+    for msg in messages:
+        historique.append(
+            types.Content(role=msg["role"], parts=[types.Part(text=msg["message"])])
+        )
+    return historique
 
 def sauvegarder_message(chat_id, role, message):
-    try:
-        supabase.table("historiques").insert({
-            "chat_id": chat_id,
-            "role": role,
-            "message": message
-        }).execute()
-    except Exception as e:
-        print(f"❌ Erreur Supabase : {e}")
+    data = lire_memoire()
+    if chat_id not in data:
+        data[chat_id] = []
+    data[chat_id].append({"role": role, "message": message})
+    # Garde seulement les 10 derniers messages
+    if len(data[chat_id]) > 10:
+        data[chat_id] = data[chat_id][-10:]
+    ecrire_memoire(data)
 
 async def typing_loop(chat_id):
     try:
@@ -111,10 +112,10 @@ async def handler(event):
 
     contents = historique if historique else message_utilisateur
 
-    # Délai de 5 secondes avant que le typing démarre (effet naturel)
+    # Délai naturel avant typing
     await asyncio.sleep(5)
 
-    # Phase 1 : typing pendant que Gemini génère la réponse
+    # Phase 1 : typing pendant que Gemini génère
     typing_task = asyncio.create_task(typing_loop(event.chat_id))
 
     try:
@@ -135,7 +136,7 @@ async def handler(event):
 
     sauvegarder_message(chat_id, "model", reponse.text)
 
-    # Phase 2 : typing pendant le délai humain avant envoi
+    # Phase 2 : typing pendant le délai humain
     temps = min(max((len(reponse.text) / 50) * 9, 18), 90)
     typing_task2 = asyncio.create_task(typing_loop(event.chat_id))
     await asyncio.sleep(temps)
