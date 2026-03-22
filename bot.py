@@ -3,7 +3,7 @@ load_dotenv()
 import os
 import asyncio
 
-from telethon import TelegramClient, events
+from telethon import TelegramClient, events, functions, types as tg_types
 from google import genai
 from google.genai import types
 from supabase import create_client
@@ -86,6 +86,17 @@ def sauvegarder_message(chat_id, role, message):
     except Exception as e:
         print(f"❌ Erreur Supabase : {e}")
 
+async def typing_loop(chat_id):
+    try:
+        while True:
+            await client(functions.messages.SetTypingRequest(
+                peer=chat_id,
+                action=tg_types.SendMessageTypingAction()
+            ))
+            await asyncio.sleep(4)
+    except asyncio.CancelledError:
+        pass
+
 @client.on(events.NewMessage(incoming=True))
 async def handler(event):
     if not event.is_private:
@@ -98,21 +109,10 @@ async def handler(event):
     sauvegarder_message(chat_id, "user", message_utilisateur)
     historique = charger_historique(chat_id)
 
-    if not historique:
-        contents = message_utilisateur
-    else:
-        contents = historique
+    contents = historique if historique else message_utilisateur
 
-    # Typing pendant que Gemini réfléchit
-    async def typing_loop():
-        try:
-            while True:
-                async with client.action(event.chat_id, "typing"):
-                    await asyncio.sleep(4)
-        except asyncio.CancelledError:
-            pass
-
-    typing_task = asyncio.create_task(typing_loop())
+    # Phase 1 : typing pendant que Gemini génère la réponse
+    typing_task = asyncio.create_task(typing_loop(event.chat_id))
 
     try:
         reponse = client_gemini.models.generate_content(
@@ -124,6 +124,7 @@ async def handler(event):
         )
     finally:
         typing_task.cancel()
+        await asyncio.sleep(0.1)
 
     if not reponse.text:
         print("⚠️ Réponse Gemini vide")
@@ -131,9 +132,12 @@ async def handler(event):
 
     sauvegarder_message(chat_id, "model", reponse.text)
 
-    # Délai humain avant d'envoyer
+    # Phase 2 : typing pendant le délai humain avant envoi
     temps = min(max((len(reponse.text) / 50) * 9, 18), 90)
+    typing_task2 = asyncio.create_task(typing_loop(event.chat_id))
     await asyncio.sleep(temps)
+    typing_task2.cancel()
+    await asyncio.sleep(0.1)
 
     await event.respond(reponse.text)
     print(f"✅ Réponse envoyée : {reponse.text[:50]}")
