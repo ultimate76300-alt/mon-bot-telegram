@@ -45,7 +45,7 @@ def charger_historique(chat_id):
             .select("role, message")\
             .eq("chat_id", chat_id)\
             .order("created_at")\
-            .limit(20)\
+            .limit(10)\
             .execute()
         print(f"📖 Historique chargé : {len(data.data)} messages pour {chat_id}")
         historique = []
